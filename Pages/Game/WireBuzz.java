@@ -1,3 +1,4 @@
+package Pages.Game;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
@@ -9,67 +10,47 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import javax.swing.JFrame;
 import javax.swing.Timer;
+
 import java.awt.geom.Point2D;
-import java.awt.Rectangle;
-import java.awt.geom.AffineTransform;
-import java.awt.geom.GeneralPath;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
 import java.awt.Graphics2D;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 import java.awt.event.KeyEvent;
 
-class Ring {
-    public Rectangle upper;
-    public Rectangle lower;
-    public Rectangle left;
-    public Rectangle right;
-
-    public Ring(int x, int y, int height, int thickness) {
-        int outerWidth = height * 2 / 5; // Make the width 75% of the height
-        // int innerWidth = outerWidth - 2 * thickness;
-        this.upper = new Rectangle(x, y, outerWidth, thickness);
-        this.lower = new Rectangle(x, y + height - thickness, outerWidth, thickness);
-        this.left = new Rectangle(x, y + thickness, thickness, height - 2 * thickness);
-        this.right = new Rectangle(x + outerWidth - thickness, y + thickness, thickness, height - 2 * thickness);
-    }
-}
-
-class Wire {
-    public Path2D path;
-
-    public Wire(int initialX, int initialY) {
-        path = new GeneralPath();
-        path.moveTo(initialX, initialY);
-    }
-
-    public void addPoint(int x, int y) {
-        path.lineTo(x, y);
-    }
-
-    public void shiftLeft(int distance) {
-        path.transform(AffineTransform.getTranslateInstance(-distance, 0));
-    }
-}
+import Components.Ring;
+import Components.Wire;
 
 public class WireBuzz implements ActionListener, MouseListener, KeyListener {
 
+    private static final String CREDENTIALS_FILE = "database.csv";
+
     public static WireBuzz wireBuzz;
 
-    public static final int WIDTH = 800, HEIGHT = 800;
+    public static final int WIDTH = 800, HEIGHT = 790;
 
     public Renderer renderer;
 
     // variable for ring
     public Ring ring;
-    public static final int ringHeight = HEIGHT / 7;
-    public static final int ringThickness = 4;
-    public static final int ringX = (WIDTH) / 2 - 60;
-    public static final int ringY = (HEIGHT) / 2 - ringHeight / 2;
+    public int ringHeight = HEIGHT / 7;
+    public int ringThickness = 4;
+    public int ringX = (WIDTH) / 2 - 60;
+    public int ringY = (HEIGHT) / 2 - ringHeight / 2;
 
     public int ticks, yMotion, time;
     public boolean gameOver = false, started = false;
+    int level = 1;
+    private String username;
+    private int highScore;
 
     // variable for wire
     public Wire wire;
@@ -77,8 +58,26 @@ public class WireBuzz implements ActionListener, MouseListener, KeyListener {
     int numberOfturns = 4; // The number of turns the wire will make in the current screen
     // increase the number of turns to increase the difficulty
 
-    public WireBuzz() {
+    public WireBuzz(boolean fire, int lvl, String username) {
+        if (fire) {
+            start(lvl, username);
+        }
+    }
+    public WireBuzz(int lvl, String username) {
+        this.username = username;
+        this.highScore = getHighScore(username);
+        this.level = lvl;
+        if(level==1){
+            ringHeight = HEIGHT / 7;
+        }
+        else if(level==2){
+            ringHeight = HEIGHT / 10;
+        }
+        else if(level==3){
+            ringHeight = HEIGHT / 12;
+        }
         JFrame jframe = new JFrame();
+        jframe.setBounds(300, 90, 900, 600);
         Timer timer = new Timer(20, this);
 
         renderer = new Renderer();
@@ -99,6 +98,57 @@ public class WireBuzz implements ActionListener, MouseListener, KeyListener {
         addWirePoint(true); // Add the first five points to the wire
 
         timer.start();
+    }
+
+    private int getHighScore(String username) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(CREDENTIALS_FILE))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(",");
+                if (parts[0].equals(username)) {
+                    return Integer.parseInt(parts[3]);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
+    private void updateHighScore() {
+    if (time > highScore) {
+        highScore = time;
+        try {
+            List<String> lines = new ArrayList<>();
+            try (BufferedReader reader = new BufferedReader(new FileReader(CREDENTIALS_FILE))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] parts = line.split(",");
+                    if (parts[0].equals(username)) {
+                        // Update the high score for this user
+                        lines.add(username + "," + parts[1] + "," + parts[2] + "," + highScore);
+                    } else {
+                        // Keep the line as is
+                        lines.add(line);
+                    }
+                }
+            }
+
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(CREDENTIALS_FILE))) {
+                for (String line : lines) {
+                    writer.write(line);
+                    writer.newLine();
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+    // Add a method to start the game
+    public void start(int lvl, String username) {
+        wireBuzz = new WireBuzz(lvl, username);
     }
 
     public void addWirePoint(boolean start) {
@@ -254,6 +304,7 @@ public class WireBuzz implements ActionListener, MouseListener, KeyListener {
                 }
                 if (ticks % 50 == 0) {
                     time++;  // Increment the score every second
+                    updateHighScore();
                 }
                 updateWire();
                 ring.upper.y += yMotion;
@@ -299,10 +350,20 @@ public class WireBuzz implements ActionListener, MouseListener, KeyListener {
         g.setFont(new Font("Arial", 1, 70));
         g.drawString("Score: " + time, WIDTH/2-150, 100);  // Display the score
 
+        // draw level
+        g.drawString("Level: " + level, WIDTH/2-150, 200);  // Display the score
+        
+        g.setColor(Color.BLACK);
+        g.setFont(new Font("Arial", 1, 20));
+
+        g.drawString("High Score: " + highScore, WIDTH-150, 40);  // Display the high score
+        
+        g.drawString("Username: " + username, 20, 40);  // Display the username
+
     }
 
     public static void main(String[] args) {
-        wireBuzz = new WireBuzz();
+        wireBuzz = new WireBuzz(1,"root");
     }
 
     @Override
